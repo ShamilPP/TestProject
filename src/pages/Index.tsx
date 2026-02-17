@@ -13,6 +13,7 @@ const Index = () => {
   const [screen, setScreen] = useState<Screen>("checkout");
   const [locationOpen, setLocationOpen] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const updateQuantity = useCallback((id: string, delta: number) => {
     setItems((prev) =>
@@ -30,16 +31,40 @@ const Index = () => {
   const deliveryFee = 3.99;
   const total = subtotal + deliveryFee;
 
-  const handleProceed = () => setLocationOpen(true);
+  const handleProceed = () => {
+    setLocationError(null);
+    setLocationOpen(true);
+  };
 
   const handleAllowLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationError("Geolocation is not supported in this browser.");
+      return;
+    }
+
     setLocationLoading(true);
-    // Simulate geolocation detection
-    setTimeout(() => {
-      setLocationLoading(false);
-      setLocationOpen(false);
-      setScreen("success");
-    }, 2000);
+
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        setLocationLoading(false);
+        setLocationOpen(false);
+        setLocationError(null);
+        setScreen("success");
+      },
+      (error) => {
+        setLocationLoading(false);
+        if (error.code === error.PERMISSION_DENIED) {
+          setLocationError("Please allow location access to continue.");
+          return;
+        }
+        setLocationError("Unable to detect your location. Please try again.");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
   };
 
   const handleNewOrder = () => {
@@ -139,6 +164,7 @@ const Index = () => {
         onAllow={handleAllowLocation}
         onDeny={() => setLocationOpen(false)}
         loading={locationLoading}
+        error={locationError}
       />
     </div>
   );
