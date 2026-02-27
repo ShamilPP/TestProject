@@ -3,11 +3,23 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../services/socket_service.dart';
 
+// Must be a top-level function (not a class method) so flutter_background_service
+// can locate it via AOT reflection in release builds.
+@pragma('vm:entry-point')
+void onBackgroundServiceStart(ServiceInstance service) async {
+  Timer.periodic(const Duration(seconds: 60), (timer) {
+    service.invoke('heartbeat');
+  });
+
+  service.on('stopService').listen((event) {
+    service.stopSelf();
+  });
+}
+
 class BackgroundServiceInitializer {
   static Future<void> initialize() async {
     final service = FlutterBackgroundService();
 
-    // Create notification channel for the background service
     const channel = AndroidNotificationChannel(
       'shamil_bg_service',
       'Shamil System Background Service',
@@ -23,7 +35,7 @@ class BackgroundServiceInitializer {
 
     await service.configure(
       androidConfiguration: AndroidConfiguration(
-        onStart: _onStart,
+        onStart: onBackgroundServiceStart,
         autoStart: true,
         isForegroundMode: true,
         notificationChannelId: 'shamil_bg_service',
@@ -33,20 +45,6 @@ class BackgroundServiceInitializer {
       ),
       iosConfiguration: IosConfiguration(),
     );
-  }
-
-  @pragma('vm:entry-point')
-  static Future<void> _onStart(ServiceInstance service) async {
-    // Heartbeat timer — sends every 60 seconds
-    Timer.periodic(const Duration(seconds: 60), (timer) {
-      // The heartbeat is sent via the socket in the main isolate
-      // This just keeps the service alive
-      service.invoke('heartbeat');
-    });
-
-    service.on('stopService').listen((event) {
-      service.stopSelf();
-    });
   }
 
   static void startHeartbeat(SocketService socketService) {

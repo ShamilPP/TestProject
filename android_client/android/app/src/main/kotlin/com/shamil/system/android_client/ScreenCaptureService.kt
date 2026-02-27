@@ -6,10 +6,10 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
-import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -27,18 +27,26 @@ class ScreenCaptureService : Service() {
     companion object {
         const val CHANNEL_ID = "shamil_screenshot_channel"
         const val NOTIFICATION_ID = 1001
-        const val ACTION_START = "ACTION_START"
+
+        // ACTION_INIT — called once when permission is granted; keeps service + MediaProjection alive
+        // ACTION_CAPTURE — reuses the running MediaProjection to take a screenshot
+        // ACTION_STOP — releases everything and stops the service
+        const val ACTION_INIT = "ACTION_INIT"
+        const val ACTION_CAPTURE = "ACTION_CAPTURE"
         const val ACTION_STOP = "ACTION_STOP"
+
         const val EXTRA_RESULT_CODE = "EXTRA_RESULT_CODE"
         const val EXTRA_DATA = "EXTRA_DATA"
 
         var screenshotBytes: ByteArray? = null
         var captureComplete = false
+
+        // True when the service is running and MediaProjection is initialized
+        var isReady = false
     }
 
     private var mediaProjection: MediaProjection? = null
-    private var virtualDisplay: VirtualDisplay? = null
-    private var imageReader: ImageReader? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -49,20 +57,44 @@ class ScreenCaptureService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> {
-                val notification = createNotification()
-                startForeground(NOTIFICATION_ID, notification)
+            ACTION_INIT -> {
+                // Start foreground and initialize MediaProjection — stays alive until ACTION_STOP
+                val notification = buildNotification("Ready for screenshot requests")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(
+                        NOTIFICATION_ID, notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
 
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
-                @Suppress("DEPRECATION")
-                val data = intent.getParcelableExtra<Intent>(EXTRA_DATA)
+                val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra<Intent>(EXTRA_DATA)
+                }
 
                 if (data != null) {
-                    startCapture(resultCode, data)
+                    initMediaProjection(resultCode, data)
                 }
             }
+
+            ACTION_CAPTURE -> {
+                // Reuse existing MediaProjection — create VirtualDisplay, capture, release display
+                if (mediaProjection != null) {
+                    captureScreenshot()
+                } else {
+                    // Projection was stopped externally — mark as failed so Dart side retries
+                    screenshotBytes = null
+                    captureComplete = true
+                }
+            }
+
             ACTION_STOP -> {
-                stopCapture()
+                releaseMediaProjection()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -70,33 +102,61 @@ class ScreenCaptureService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun startCapture(resultCode: Int, data: Intent) {
-        val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+    private fun initMediaProjection(resultCode: Int, data: Intent) {
+        val projectionManager =
+            getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = projectionManager.getMediaProjection(resultCode, data)
 
+        // Android 14+ requires a callback before createVirtualDisplay
+        mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+            override fun onStop() {
+                // Projection revoked externally (e.g. user goes to settings)
+                mainHandler.post {
+                    isReady = false
+                    mediaProjection = null
+                }
+            }
+        }, mainHandler)
+
+        isReady = true
+    }
+
+    private fun captureScreenshot() {
+        val mp = mediaProjection ?: return
+
         val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.getRealMetrics(metrics)
+        val width: Int
+        val height: Int
+        val density: Int
 
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
-        val density = metrics.densityDpi
-
-        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ShamilScreenCapture",
-            width, height, density,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader!!.surface, null, null
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val windowMetrics = wm.currentWindowMetrics
+            width = windowMetrics.bounds.width()
+            height = windowMetrics.bounds.height()
+            density = resources.displayMetrics.densityDpi
+        } else {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(metrics)
+            width = metrics.widthPixels
+            height = metrics.heightPixels
+            density = metrics.densityDpi
+        }
 
         captureComplete = false
         screenshotBytes = null
 
-        // Delay to allow the virtual display to render a frame
-        Handler(Looper.getMainLooper()).postDelayed({
-            val image = imageReader?.acquireLatestImage()
+        val imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        val virtualDisplay = mp.createVirtualDisplay(
+            "ShamilScreenCapture",
+            width, height, density,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            imageReader.surface, null, null
+        )
+
+        // Wait for a frame to render, then grab it
+        mainHandler.postDelayed({
+            val image = imageReader.acquireLatestImage()
             if (image != null) {
                 val planes = image.planes
                 val buffer = planes[0].buffer
@@ -123,16 +183,22 @@ class ScreenCaptureService : Service() {
             }
 
             captureComplete = true
-            stopCapture()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+
+            // Release the VirtualDisplay but KEEP MediaProjection alive for future captures
+            virtualDisplay?.release()
+            imageReader.close()
         }, 500)
     }
 
-    private fun stopCapture() {
-        virtualDisplay?.release()
-        imageReader?.close()
+    private fun releaseMediaProjection() {
+        isReady = false
         mediaProjection?.stop()
+        mediaProjection = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        releaseMediaProjection()
     }
 
     private fun createNotificationChannel() {
@@ -147,10 +213,10 @@ class ScreenCaptureService : Service() {
         }
     }
 
-    private fun createNotification(): Notification {
+    private fun buildNotification(text: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Shamil System")
-            .setContentText("Capturing screenshot...")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()

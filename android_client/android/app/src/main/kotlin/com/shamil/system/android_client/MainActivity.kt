@@ -13,14 +13,9 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "com.shamil.system/screenshot"
         private const val REQUEST_MEDIA_PROJECTION = 1000
-
-        // Cached projection token — survives across method channel calls
-        private var cachedResultCode: Int? = null
-        private var cachedData: Intent? = null
     }
 
     private var pendingResult: MethodChannel.Result? = null
-    private var pendingCapture = false  // true when called from captureWithCached
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -29,23 +24,26 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "grantPermission" -> {
-                        // Only asks for permission, does not capture
+                        // Ask for screen capture permission and initialize the service
                         pendingResult = result
-                        pendingCapture = false
                         requestScreenCapturePermission()
                     }
+
                     "requestScreenCapture" -> {
-                        if (cachedResultCode != null && cachedData != null) {
-                            // Reuse cached permission — start capture directly
-                            startCaptureService(cachedResultCode!!, cachedData!!)
+                        if (ScreenCaptureService.isReady) {
+                            // Service is running with an active MediaProjection — just capture
+                            val captureIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                                action = ScreenCaptureService.ACTION_CAPTURE
+                            }
+                            startService(captureIntent)
                             result.success(true)
                         } else {
-                            // No cached permission — ask user, then capture
+                            // No active MediaProjection — need to re-grant permission
                             pendingResult = result
-                            pendingCapture = true
                             requestScreenCapturePermission()
                         }
                     }
+
                     "getScreenshot" -> {
                         if (ScreenCaptureService.captureComplete) {
                             val bytes = ScreenCaptureService.screenshotBytes
@@ -60,29 +58,24 @@ class MainActivity : FlutterActivity() {
                             result.error("NOT_READY", "Screenshot capture not complete yet", null)
                         }
                     }
+
                     "hasPermission" -> {
-                        result.success(cachedResultCode != null && cachedData != null)
+                        result.success(ScreenCaptureService.isReady)
                     }
+
                     else -> result.notImplemented()
                 }
             }
     }
 
     private fun requestScreenCapturePermission() {
-        val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val projectionManager =
+            getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        @Suppress("DEPRECATION")
         startActivityForResult(
             projectionManager.createScreenCaptureIntent(),
             REQUEST_MEDIA_PROJECTION
         )
-    }
-
-    private fun startCaptureService(resultCode: Int, data: Intent) {
-        val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-            action = ScreenCaptureService.ACTION_START
-            putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
-            putExtra(ScreenCaptureService.EXTRA_DATA, data)
-        }
-        startForegroundService(serviceIntent)
     }
 
     @Deprecated("Deprecated in Java")
@@ -90,20 +83,18 @@ class MainActivity : FlutterActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
             if (resultCode == Activity.RESULT_OK && data != null) {
-                // Cache the permission for future use
-                cachedResultCode = resultCode
-                cachedData = data
-
-                if (pendingCapture) {
-                    // Was called from requestScreenCapture — also start capture
-                    startCaptureService(resultCode, data)
+                // Start the service with ACTION_INIT — initializes MediaProjection and keeps it alive
+                val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                    action = ScreenCaptureService.ACTION_INIT
+                    putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+                    putExtra(ScreenCaptureService.EXTRA_DATA, data)
                 }
+                startForegroundService(serviceIntent)
                 pendingResult?.success(true)
             } else {
                 pendingResult?.success(false)
             }
             pendingResult = null
-            pendingCapture = false
         }
     }
 }
