@@ -16,7 +16,7 @@ const requestRoutes = require('./routes/requests');
 const app = express();
 const server = http.createServer(app);
 
-const EC2_IP = '16.170.98.132';
+const EC2_IP = '13.60.80.239';
 const PORT = process.env.PORT || 5677;
 const allowedOrigins = '*';
 

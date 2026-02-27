@@ -133,7 +133,7 @@ Backend environment variables in `backend/.env`:
 
 ## Deploying to AWS EC2 (Production)
 
-**Server:** `16.170.98.132` | **Port:** `5677`
+**Server:** `13.60.80.239` | **Port:** `5677`
 
 ### EC2 Setup (run once on the server)
 
@@ -150,7 +150,7 @@ sudo ufw allow 5677
 
 # 4. Clone / upload the backend folder to EC2
 #    e.g. using scp:
-scp -r ./backend ec2-user@16.170.98.132:~/shamil-system/
+scp -r ./backend ec2-user@13.60.80.239:~/shamil-system/
 
 # 5. Install dependencies on EC2
 cd ~/shamil-system/backend
@@ -191,7 +191,7 @@ npm run build
 # dist/ folder is created
 
 # Upload dist/ to EC2
-scp -r ./dist ec2-user@16.170.98.132:~/shamil-system/admin_panel/
+scp -r ./dist ec2-user@13.60.80.239:~/shamil-system/admin_panel/
 
 # On EC2: serve with nginx or a simple static server
 # Option A — nginx (recommended)
@@ -205,7 +205,7 @@ serve -s dist -l 80
 
 ### Build Android APK for Production
 
-The APK is already configured to point to `http://16.170.98.132:5677`.
+The APK is already configured to point to `http://13.60.80.239:5677`.
 
 ```bash
 cd android_client
