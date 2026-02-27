@@ -1,0 +1,31 @@
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.iconWrap {
+  font-size: 28px;
+  display: flex;
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+}
+
+.value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #e6edf3;
+}
+
+.label {
+  font-size: 13px;
+  color: #8b949e;
+  margin-top: 2px;
+}

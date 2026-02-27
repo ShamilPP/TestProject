@@ -1,0 +1,5 @@
+Start MongoDB — mongod
+Start backend — cd backend && npm run seed && npm start (seeds admin user, starts on port 3000)
+Start admin panel — cd admin_panel && npm run dev (opens on port 5173)
+Build Android APK — cd android_client && flutter build apk
+Update android_client/lib/core/constants.dart with your server's actual IP address for physical device testing
