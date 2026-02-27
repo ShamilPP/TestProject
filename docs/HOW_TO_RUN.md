@@ -122,8 +122,102 @@ cd android_client && flutter pub get && flutter run
 
 Backend environment variables in `backend/.env`:
 
-| Variable    | Default                                 | Description            |
-|-------------|-----------------------------------------|------------------------|
-| PORT        | 3000                                    | API server port        |
-| MONGODB_URI | mongodb://localhost:27017/shamil_system | MongoDB connection     |
-| JWT_SECRET  | (change in production)                  | JWT signing secret key |
+| Variable    | Value                  | Description            |
+|-------------|------------------------|------------------------|
+| PORT        | 5677                   | API server port        |
+| MONGODB_URI | (MongoDB Atlas URI)    | MongoDB Atlas connection|
+| JWT_SECRET  | (change in production) | JWT signing secret key |
+| NODE_ENV    | production             | Enables prod settings  |
+
+---
+
+## Deploying to AWS EC2 (Production)
+
+**Server:** `16.170.98.132` | **Port:** `5677`
+
+### EC2 Setup (run once on the server)
+
+```bash
+# 1. Install Node.js 18+
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# 2. Install PM2 globally
+sudo npm install -g pm2
+
+# 3. Allow port 5677 through firewall (also open in EC2 Security Group)
+sudo ufw allow 5677
+
+# 4. Clone / upload the backend folder to EC2
+#    e.g. using scp:
+scp -r ./backend ec2-user@16.170.98.132:~/shamil-system/
+
+# 5. Install dependencies on EC2
+cd ~/shamil-system/backend
+npm install
+
+# 6. Create .env on EC2 (copy your local .env)
+nano .env   # paste the contents
+
+# 7. Seed the admin user (first time only)
+npm run seed
+
+# 8. Start with PM2
+npm run pm2:start
+# or directly:
+pm2 start ecosystem.config.js --env production
+
+# 9. Save PM2 process list (auto-restart on reboot)
+pm2 save
+pm2 startup    # follow the printed instruction
+```
+
+### PM2 Management Commands (on EC2)
+
+```bash
+pm2 status                  # see running apps
+pm2 logs shamil-system      # live logs
+pm2 restart shamil-system   # restart after code change
+pm2 stop shamil-system      # stop
+pm2 delete shamil-system    # remove from PM2
+```
+
+### Deploy Admin Panel to EC2
+
+```bash
+# Build locally
+cd admin_panel
+npm run build
+# dist/ folder is created
+
+# Upload dist/ to EC2
+scp -r ./dist ec2-user@16.170.98.132:~/shamil-system/admin_panel/
+
+# On EC2: serve with nginx or a simple static server
+# Option A — nginx (recommended)
+sudo apt install nginx
+# Put dist/ contents in /var/www/html
+
+# Option B — serve with Node (quick)
+npm install -g serve
+serve -s dist -l 80
+```
+
+### Build Android APK for Production
+
+The APK is already configured to point to `http://16.170.98.132:5677`.
+
+```bash
+cd android_client
+flutter build apk --release
+```
+
+APK: `android_client/build/app/outputs/flutter-apk/app-release.apk`
+
+### EC2 Security Group — Required Inbound Rules
+
+| Type       | Port | Source    |
+|------------|------|-----------|
+| Custom TCP | 5677 | 0.0.0.0/0 |
+| HTTP       | 80   | 0.0.0.0/0 |
+| SSH        | 22   | Your IP   |

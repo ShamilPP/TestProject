@@ -6,7 +6,12 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "seed": "node seed.js"
+    "seed": "node seed.js",
+    "pm2:start": "pm2 start ecosystem.config.js --env production",
+    "pm2:stop": "pm2 stop shamil-system",
+    "pm2:restart": "pm2 restart shamil-system",
+    "pm2:logs": "pm2 logs shamil-system",
+    "pm2:status": "pm2 status"
   },
   "keywords": [],
   "author": "",

@@ -16,11 +16,26 @@ const requestRoutes = require('./routes/requests');
 const app = express();
 const server = http.createServer(app);
 
+const isProduction = process.env.NODE_ENV === 'production';
+const EC2_IP = '16.170.98.132';
+const PORT = process.env.PORT || 5677;
+
+// CORS origins — open in dev, restricted to EC2 in prod
+const allowedOrigins = isProduction
+  ? [
+      `http://${EC2_IP}`,
+      `http://${EC2_IP}:${PORT}`,
+      `http://${EC2_IP}:5173`,
+      `http://${EC2_IP}:80`,
+    ]
+  : '*';
+
 // Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
@@ -28,7 +43,7 @@ const io = new Server(server, {
 app.set('io', io);
 
 // Middleware
-app.use(cors());
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -49,12 +64,10 @@ app.get('/api/health', (req, res) => {
 // Setup Socket.IO
 setupSocketHandlers(io);
 
-// Start server
-const PORT = process.env.PORT || 3000;
-
+// Start server — bind to 0.0.0.0 so EC2 accepts external connections
 connectDB().then(() => {
-  server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`API: http://localhost:${PORT}/api`);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[${process.env.NODE_ENV || 'development'}] Server running on 0.0.0.0:${PORT}`);
+    console.log(`API: http://${EC2_IP}:${PORT}/api`);
   });
 });
