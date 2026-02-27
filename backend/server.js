@@ -16,19 +16,9 @@ const requestRoutes = require('./routes/requests');
 const app = express();
 const server = http.createServer(app);
 
-const isProduction = process.env.NODE_ENV === 'production';
 const EC2_IP = '16.170.98.132';
 const PORT = process.env.PORT || 5677;
-
-// CORS origins — open in dev, restricted to EC2 in prod
-const allowedOrigins = isProduction
-  ? [
-      `http://${EC2_IP}`,
-      `http://${EC2_IP}:${PORT}`,
-      `http://${EC2_IP}:5173`,
-      `http://${EC2_IP}:80`,
-    ]
-  : '*';
+const allowedOrigins = '*';
 
 // Socket.IO
 const io = new Server(server, {
