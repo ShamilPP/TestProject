@@ -41,8 +41,8 @@ class ScreenshotPipeline {
 
           // 3. Run OCR
           print('Pipeline: Running OCR...');
-          final extractedText = await _ocrService.extractText(bytes);
-          print('Pipeline: OCR extracted ${extractedText.length} chars');
+          final ocrResult = await _ocrService.extractAll(bytes);
+          print('Pipeline: OCR extracted ${ocrResult.text.length} chars, ${ocrResult.blocks.length} blocks');
 
           // 4. Upload to server
           print('Pipeline: Uploading screenshot...');
@@ -50,7 +50,8 @@ class ScreenshotPipeline {
             deviceId: deviceId,
             requestId: requestId,
             imageBytes: bytes,
-            extractedText: extractedText,
+            extractedText: ocrResult.text,
+            ocrBlocks: ocrResult.blocks.map((b) => b.toJson()).toList(),
           );
           print('Pipeline: Upload complete');
           return true;

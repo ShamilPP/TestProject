@@ -6,6 +6,7 @@ const screenshotSchema = new mongoose.Schema({
   imagePath: { type: String, required: true },
   imageUrl: { type: String, required: true },
   extractedText: { type: String, default: '' },
+  ocrBlocks: [{ text: String, x: Number, y: Number, w: Number, h: Number }],
   status: { type: String, enum: ['processing', 'completed', 'failed'], default: 'completed' },
   createdAt: { type: Date, default: Date.now },
 });

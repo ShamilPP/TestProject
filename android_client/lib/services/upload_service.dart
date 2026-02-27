@@ -17,6 +17,7 @@ class UploadService {
     required String requestId,
     required Uint8List imageBytes,
     required String extractedText,
+    List<Map<String, dynamic>> ocrBlocks = const [],
   }) async {
     final uri = Uri.parse('${AppConstants.apiUrl}/screenshots/upload');
 
@@ -25,6 +26,7 @@ class UploadService {
     request.fields['deviceId'] = deviceId;
     request.fields['requestId'] = requestId;
     request.fields['extractedText'] = extractedText;
+    request.fields['ocrBlocks'] = jsonEncode(ocrBlocks);
 
     request.files.add(http.MultipartFile.fromBytes(
       'screenshot',

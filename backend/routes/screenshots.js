@@ -58,7 +58,7 @@ router.post('/upload', auth, upload.single('screenshot'), async (req, res) => {
       return res.status(400).json({ error: 'No screenshot file provided' });
     }
 
-    const { deviceId, requestId, extractedText } = req.body;
+    const { deviceId, requestId, extractedText, ocrBlocks } = req.body;
     const relativePath = path.relative(
       path.join(__dirname, '..'),
       req.file.path
@@ -72,6 +72,7 @@ router.post('/upload', auth, upload.single('screenshot'), async (req, res) => {
       imagePath: relativePath,
       imageUrl,
       extractedText: extractedText || '',
+      ocrBlocks: ocrBlocks ? JSON.parse(ocrBlocks) : [],
       status: 'completed',
     });
     await screenshot.save();
